@@ -31,20 +31,26 @@ app.use(express.json());
 app.post(
   "/users",
   async ({ body }: CustomRequest<UserRequestBody>, res: Response) => {
-    const uuid = uuidv4();
-    const user: User = User.create({
-      uuid,
-      firstName: body.firstName,
-      lastName: body.lastName,
-      email: body.email,
-      phoneNumber: body.phoneNumber,
-      password: body.password,
-      role: UserRole.CLIENT,
-      creationDate: new Date(),
-      currentEvent: UserEvent.CREATION,
-    });
-    await user.save();
-    res.status(201).json({ id: uuid });
+    const userExist: User = await User.findOne({ email: body.email });
+    if (userExist) {
+      res.status(400).json({ message: "User already exists!" });      
+    }
+    else {
+      const uuid = uuidv4();
+      const user: User = User.create({
+        uuid:uuid,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        phoneNumber: body.phoneNumber,
+        password: body.password,
+        role: UserRole.CLIENT,
+        creationDate: new Date(),
+        currentEvent: UserEvent.CREATION,
+      });
+      await user.save();
+      res.status(201).json({ id: uuid });
+    }
   }
 );
 
@@ -61,43 +67,58 @@ app.get("/users/:id", async (req: Request, res: Response) => {
 });
 
 app.delete("/users/:id", async (req: Request, res: Response) => {
-  const user: User = await User.findOne({ uuid: req.params.id });
-  if (user) {
-    User.delete(user);
-    res.sendStatus(204);
-  } else res.status(404).json({ message: "User not found!" });
+  const projectExist: Project = await Project.findOne({where: { owner: req.params.id }});
+
+  if (projectExist){
+    res.status(400).json({ message: "There is a project linked to the user!" });
+  }
+  else {
+    const user: User = await User.findOne({ uuid: req.params.id });
+    if (user) {
+      User.delete(user);
+      res.sendStatus(204);
+    } else res.status(404).json({ message: "User not found!" });
+  }
 });
 
 app.post(
-  "projects",
+  "/projects",
   async ({ body }: CustomRequest<ProjectRequestBody>, res: Response) => {
-    const uuid = uuidv4();
     const user: User = await User.findOne({ uuid: body.userId });
-    const project: Project = Project.create({
-      uuid,
-      description: body.description,
-      owner: user,
-      creationDate: new Date(),
-    });
-    await project.save();
-    res.status(201).json({ id: uuid });
+    if (user) {
+      const uuid = uuidv4();
+      const project: Project = Project.create({
+        uuid:uuid,
+        description: body.description,
+        owner: user,
+        creationDate: new Date(),
+      });
+      await project.save();
+      res.status(201).json({ id: uuid });
+    } else res.status(404).json({ message: "User not found to insert project!" });
   }
 );
 
 app.get("/projects", async (req: Request, res: Response) => {
   const { userId } = req.query;
   let projects: Project[];
-  if (userId) projects = await Project.find({where: { owner: userId }});
+  if (userId) {
+    projects = await Project.find({
+      where: { owner: userId }
+    });
+  }
   else projects = await Project.find();
   res.status(200).json(projects);
 });
 
 app.get("/projects/:projectId", async (req: Request, res: Response) => {
   const { projectId } = req.params;
-  const projects: Project = await Project.findOne({
+  const project: Project = await Project.findOne({
     where: { uuid: projectId },
   });
-  res.status(200).json(projects);
+  if (project) {
+    res.status(200).json(project);
+  } else res.status(404).json({ message: "Project not found!" });  
 });
 
 app.delete("/projects/:projectId", async (req: Request, res: Response) => {
@@ -108,7 +129,7 @@ app.delete("/projects/:projectId", async (req: Request, res: Response) => {
   if (project) {
     Project.delete(project);
     res.sendStatus(204);
-  } else res.status(404).json({ message: "User not found!" });
+  } else res.status(404).json({ message: "Project not found!" });
 });
 
 const server = app.listen(PORT, () => {
